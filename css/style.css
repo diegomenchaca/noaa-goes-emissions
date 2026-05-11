@@ -1,0 +1,358 @@
+/* ── Reset ─────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ── Design tokens ─────────────────────────────────────────── */
+:root {
+  --bg:        #0d1117;
+  --surface:   #161b22;
+  --surface2:  #1c2128;
+  --border:    #30363d;
+  --text:      #c9d1d9;
+  --muted:     #8b949e;
+  --fire:      #e05c2f;
+  --fire-hi:   #ff8c42;
+  --lst-warm:  #c0392b;
+  --lst-cool:  #2471a3;
+  --accent:    #f0c040;
+  --font:      'Inter', system-ui, -apple-system, sans-serif;
+  --sidebar-w: 296px;
+  --header-h:  64px;
+  --footer-h:  48px;
+}
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+  overflow: hidden;
+}
+
+/* ── App shell ─────────────────────────────────────────────── */
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* Header */
+header {
+  flex: 0 0 var(--header-h);
+  display: flex;
+  align-items: center;
+  padding: 0 18px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  gap: 16px;
+}
+
+h1 {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+#subtitle {
+  font-size: 0.95rem;
+  color: var(--muted);
+  line-height: 1.4;
+  max-width: 700px;
+}
+
+.subtitle-meta {
+  color: #6a7380;
+  font-size: 0.7rem;
+}
+
+/* Nav tips — centered between legends and data note */
+#nav-tips {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+}
+.nav-tip {
+  font-size: 0.65rem;
+  color: var(--muted);
+  font-style: italic;
+  white-space: nowrap;
+}
+.nav-tip + .nav-tip::before {
+  content: "·";
+  margin: 0 8px;
+  color: var(--border);
+  font-style: normal;
+}
+
+/* Main row */
+#main {
+  flex: 1 1 0;
+  display: flex;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* ── Map area ──────────────────────────────────────────────── */
+#map-area {
+  flex: 1 1 0;
+  position: relative;
+  overflow: hidden;
+  background: #05080f;
+  min-width: 0;
+}
+
+#map-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: all;
+}
+
+/* Large year overlay on map */
+#year-stamp {
+  position: absolute;
+  bottom: 18px;
+  left: 20px;
+  font-size: 5rem;
+  font-weight: 800;
+  color: rgba(255,255,255,0.08);
+  letter-spacing: -0.04em;
+  pointer-events: none;
+  user-select: none;
+  font-variant-numeric: tabular-nums;
+  transition: opacity 0.3s;
+}
+
+/* ── Sidebar ───────────────────────────────────────────────── */
+#sidebar {
+  flex: 0 0 var(--sidebar-w);
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+#sidebar section {
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* Playback */
+#playback-section { padding-bottom: 14px; }
+
+#year-display {
+  text-align: center;
+  margin-bottom: 10px;
+}
+
+#year-label {
+  font-size: 3.4rem;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+#year-slider {
+  width: 100%;
+  accent-color: var(--fire);
+  cursor: pointer;
+  margin-bottom: 2px;
+}
+
+#year-marks {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 0.68rem;
+  margin-bottom: 10px;
+}
+
+#play-btn {
+  width: 100%;
+  padding: 8px;
+  background: var(--fire);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  transition: background 0.15s;
+}
+#play-btn:hover { background: var(--fire-hi); }
+#play-btn.playing { background: #3d4553; }
+#play-btn.playing:hover { background: #4d5563; }
+
+/* Layers */
+.section-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 4px 0;
+  user-select: none;
+  font-size: 0.82rem;
+  border-radius: 4px;
+}
+.toggle-row input[type="checkbox"] {
+  accent-color: var(--fire);
+  cursor: pointer;
+}
+
+.swatch {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+#fire-swatch {
+  background: linear-gradient(to right, #ffffb2, #fd8d3c, #bd0026);
+}
+#lst-swatch {
+  background: linear-gradient(to right, var(--lst-cool), #f5f5f5, var(--lst-warm));
+}
+
+.opacity-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+.opacity-label {
+  font-size: 0.78rem;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+#lst-opacity {
+  flex: 1;
+  accent-color: var(--lst-cool);
+  cursor: pointer;
+}
+
+/* State description */
+#state-desc {
+  font-size: 0.78rem;
+  color: var(--text);
+  line-height: 1.6;
+  min-height: 3.2em;
+}
+
+/* Cell bin descriptions */
+#cell-desc-wrap {
+  margin-top: 8px;
+}
+.cell-desc-text {
+  font-size: 0.73rem;
+  color: var(--muted);
+  line-height: 1.55;
+  margin-bottom: 5px;
+}
+
+/* Cell info */
+#cell-hint {
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-style: italic;
+}
+
+#sparkline-wrap {
+  margin-top: 6px;
+}
+#sparkline-wrap svg { overflow: visible; }
+
+/* Data note — in legend bar, right-aligned */
+#data-note {
+  font-size: 0.63rem;
+  color: var(--muted);
+  line-height: 1.55;
+  margin-left: auto;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+/* ── Legend bar ────────────────────────────────────────────── */
+#legend-bar {
+  flex: 0 0 var(--footer-h);
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 0 18px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  overflow: hidden;
+}
+
+#fire-legend-wrap, #lst-legend-wrap {
+  display: flex;
+  align-items: center;
+}
+
+/* ── Tooltip ───────────────────────────────────────────────── */
+#tooltip {
+  position: fixed;
+  display: none;
+  background: rgba(22,27,34,0.96);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 9px 13px;
+  pointer-events: none;
+  z-index: 200;
+  font-size: 0.78rem;
+  line-height: 1.65;
+  max-width: 200px;
+  backdrop-filter: blur(6px);
+}
+.tip-title  { font-weight: 600; margin-bottom: 3px; font-size: 0.82rem; }
+.tip-frp    { color: var(--fire-hi); }
+.tip-warm   { color: #e08060; }
+.tip-cool   { color: #6090e0; }
+.tip-muted  { color: var(--muted); }
+
+/* ── Map SVG elements ──────────────────────────────────────── */
+.land-bg      { fill: #0e1824; }
+.ocean-bg     { fill: #050c18; }
+.state-border { fill: none; stroke: #3a4155; stroke-width: 0.6; transition: fill 0.45s, stroke 0.1s, stroke-width 0.1s; }
+.state-border.state-hover { fill: rgba(255,255,255,0.04); stroke: rgba(255,255,255,0.45); stroke-width: 1.4; cursor: pointer; }
+.state-border.state-dim   { fill: rgba(0,0,0,0.48); stroke: #2a3040; }
+.country-border { fill: none; stroke: #556077; stroke-width: 1; }
+
+.fire-cell {
+  stroke: none;
+  cursor: pointer;
+  transition: stroke 0.1s, stroke-width 0.1s;
+}
+.fire-cell:hover {
+  stroke: rgba(255,255,255,0.8);
+  stroke-width: 1px;
+}
+.fire-cell.pinned {
+  stroke: var(--accent);
+  stroke-width: 1.5px;
+}
+
+/* Legend text */
+.leg-title { font-size: 10px; fill: var(--text); font-weight: 600; }
+.leg-tick  { font-size: 9px;  fill: var(--muted); }
+
+/* Sparkline */
+.spark-axis-l { fill: var(--fire-hi);   font-size: 8px; }
+.spark-axis-r { fill: #4fa3e0;          font-size: 8px; }
+.spark-cell-loc { font-size: 0.75rem; color: var(--muted); margin-bottom: 4px; }

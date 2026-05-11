@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Western US Wildfire &amp; Surface Temperature — 2018–2024</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<div id="app">
+
+  <header>
+    <div id="title-block">
+      <h1>Western US Wildfire Intensity &amp; Land Surface Temperature</h1>
+      <p id="subtitle">
+        Have wildfire hotspots expanded geographically between 2018–2024,
+        and does land surface warming predict where new fire risk emerges?
+      </p>
+    </div>
+  </header>
+
+  <div id="main">
+
+    <!-- Map SVG only — LST rendered in SVG, no canvas needed -->
+    <div id="map-area">
+      <svg id="map-svg"></svg>
+      <div id="year-stamp"></div>
+    </div>
+
+    <!-- Sidebar -->
+    <aside id="sidebar">
+
+      <section id="playback-section">
+        <div id="year-display">
+          <span id="year-label">2018</span>
+        </div>
+        <input type="range" id="year-slider"
+               min="2018" max="2024" step="1" value="2018" />
+        <div id="year-marks">
+          <span>2018</span><span>2021</span><span>2024</span>
+        </div>
+        <button id="play-btn">&#9654; Play</button>
+      </section>
+
+      <section id="layer-section">
+        <div class="section-label">Layers</div>
+        <label class="toggle-row" id="fire-row"
+               data-tip="Fire Radiative Power (FRP) — seasonal total Jun–Oct (MW) from GOES-16 ABI-L2-FDCC. Higher values indicate more intense or widespread wildfire activity.">
+          <input type="checkbox" id="fire-toggle" checked />
+          <span class="swatch" id="fire-swatch"></span>
+          <span>Fire Intensity (FRP)</span>
+        </label>
+        <label class="toggle-row" id="lst-row"
+               data-tip="Land Surface Temperature anomaly — summer mean (Jun–Sep) deviation from the 2018–2024 average, from GOES-16 ABI-L2-LSTC. Red = warmer than average; blue = cooler.">
+          <input type="checkbox" id="lst-toggle" checked />
+          <span class="swatch" id="lst-swatch"></span>
+          <span>LST Anomaly</span>
+        </label>
+        <div class="opacity-row">
+          <span class="opacity-label">LST opacity</span>
+          <input type="range" id="lst-opacity" min="0" max="100" value="30" step="5" />
+        </div>
+      </section>
+
+      <section id="state-desc-section">
+        <div class="section-label">Selected State</div>
+        <div id="state-desc"></div>
+      </section>
+
+      <section id="info-section">
+        <div class="section-label">Selected Cell</div>
+        <div id="cell-hint">Click any cell to see its 7-year trend</div>
+        <div id="sparkline-wrap"></div>
+        <div id="cell-desc-wrap"></div>
+      </section>
+
+    </aside>
+  </div><!-- /#main -->
+
+  <!-- Legend bar -->
+  <footer id="legend-bar">
+    <div id="fire-legend-wrap">
+      <svg id="fire-legend"></svg>
+    </div>
+    <div id="lst-legend-wrap">
+      <svg id="lst-legend"></svg>
+    </div>
+    <div id="nav-tips">
+      <span class="nav-tip">Click cell → trend</span>
+      <span class="nav-tip">Dbl-click state → zoom</span>
+      <span class="nav-tip">Dbl-click zoomed → reset</span>
+    </div>
+    <div id="data-note">
+      NOAA GOES-16 ABI-L2-FDCC &amp; LSTC · AWS S3 open data<br>
+      Coverage: CONUS west of 100°W · 32°–49°N, 125°–100°W
+    </div>
+  </footer>
+
+</div><!-- /#app -->
+
+<div id="tooltip"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
+<script src="js/viz.js"></script>
+</body>
+</html>
