@@ -16,7 +16,7 @@ const WEST_FIPS = new Set([4, 6, 8, 16, 30, 32, 35, 41, 49, 53, 56]);
 let currentYear   = 2018;
 let showFire      = true;
 let showLST       = true;
-let lstOpacity    = 0.30;
+let lstOpacity    = 0.20;
 let isPlaying     = false;
 let playTimer     = null;
 let pinnedCell    = null;
@@ -24,7 +24,8 @@ let zoomTransform = d3.zoomIdentity;
 let mouseDownXY   = null;
 let statesFeature = null;
 let stateCellsMap = new Map();
-let zoomedState   = null;
+let zoomedState          = null;
+let _sidebarTransitioning = false;
 
 /* ── Color scales ───────────────────────────────────────────── */
 const frpColor = d3.scaleSequentialLog()
@@ -41,6 +42,7 @@ const lstColor = d3.scaleDiverging()
 /* ── DOM refs ──────────────────────────────────────────────── */
 const mapArea    = document.getElementById("map-area");
 const svgEl      = document.getElementById("map-svg");
+const sidebar    = document.getElementById("sidebar");
 const tooltip    = d3.select("#tooltip");
 const yearLabel  = document.getElementById("year-label");
 const yearStamp  = document.getElementById("year-stamp");
@@ -132,7 +134,9 @@ function describeState(stateFeature, year) {
 function updateStateDesc(stateFeature) {
   const el = document.getElementById("state-desc");
   if (!el) return;
-  el.textContent = stateFeature ? describeState(stateFeature, currentYear) : "";
+  // When zoomed into a state, lock the description to that state regardless of hover
+  const effective = zoomedState ?? stateFeature;
+  el.textContent = effective ? describeState(effective, currentYear) : "";
 }
 
 /* ── Year update ────────────────────────────────────────────── */
@@ -198,22 +202,49 @@ function stopPlay() {
 }
 
 /* ── Zoom helpers ───────────────────────────────────────────── */
-function zoomToFeature(feature) {
-  zoomedState = feature;
-  statePaths.classed("state-dim", d => d !== feature);
-  const r = mapArea.getBoundingClientRect();
+function _applyZoomToState(feature, duration = 750) {
+  const r  = mapArea.getBoundingClientRect();
   const [[x0, y0], [x1, y1]] = pathGen.bounds(feature);
   const k  = Math.min(10, 0.85 / Math.max((x1 - x0) / r.width, (y1 - y0) / r.height));
   const tx = r.width  / 2 - k * (x0 + x1) / 2;
   const ty = r.height / 2 - k * (y0 + y1) / 2;
-  svg.transition().duration(750)
-    .call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(k));
+  const t  = d3.zoomIdentity.translate(tx, ty).scale(k);
+  (duration > 0 ? svg.transition().duration(duration) : svg).call(zoom.transform, t);
+}
+
+function zoomToFeature(feature) {
+  zoomedState = feature;
+  updateStateDesc(null);
+  statePaths.classed("state-dim", d => d !== feature);
+  if (pinnedCell) renderSparkline(pinnedCell, currentYear);
+
+  _sidebarTransitioning = true;
+  sidebar.classList.add("zoomed");
+
+  // Zoom starts immediately with current (pre-expansion) map dims
+  _applyZoomToState(feature, 750);
+
+  // After sidebar finishes expanding, snap-correct centering for new dims
+  sidebar.addEventListener("transitionend", () => {
+    _sidebarTransitioning = false;
+    _applyZoomToState(feature, 0);
+  }, { once: true });
 }
 
 function resetZoom() {
   zoomedState = null;
   statePaths.classed("state-dim", false);
+  updateStateDesc(hoveredStateFeature);
+  if (pinnedCell) renderSparkline(pinnedCell, currentYear);
+
+  // Start smooth zoom-out before sidebar collapses so it runs uninterrupted
   svg.transition().duration(500).call(zoom.transform, d3.zoomIdentity);
+
+  _sidebarTransitioning = true;
+  sidebar.classList.remove("zoomed");
+  sidebar.addEventListener("transitionend", () => {
+    _sidebarTransitioning = false;
+  }, { once: true });
 }
 
 /* ── Pin / clear sparkline ──────────────────────────────────── */
@@ -272,7 +303,8 @@ function renderSparkline(cellData, activeYr) {
   wrap.append("div").attr("class", "spark-cell-loc")
     .text(`${lat}°N  ${lon}°W`);
 
-  const W = 260, H = 124;
+  const W = zoomedState ? 340 : 260;
+  const H = zoomedState ? 158 : 124;
   const m = { top: 14, right: 36, bottom: 20, left: 44 };
   const w = W - m.left - m.right;
   const h = H - m.top - m.bottom;
@@ -335,7 +367,7 @@ function renderSparkline(cellData, activeYr) {
   const styleAxis = ax => {
     ax.selectAll(".domain").attr("stroke", "#3a4155");
     ax.selectAll(".tick line").attr("stroke", "#3a4155");
-    ax.selectAll(".tick text").attr("fill", "#8b949e").attr("font-size", "8.5px");
+    ax.selectAll(".tick text").attr("fill", "#8b949e").attr("font-size", "10px");
   };
 
   styleAxis(g.append("g").attr("transform", `translate(0,${h})`)
@@ -607,13 +639,11 @@ async function main() {
     updateStateDesc(null);
   });
 
-  // Single click: pin sparkline; when zoomed, also navigate to another state
+  // Single click: pin sparkline; when zoomed, clicking a different state navigates to it
   svg.on("click", event => {
     if (wasDrag(event)) return;
-    const cell = cellFromEvent(event);
-    if (cell) { pinCell(cell); return; }
 
-    // When already zoomed in, a click on a different data state moves the zoom there
+    // State-navigation check runs first so it wins over cell-pinning
     if (zoomedState) {
       const state = stateAt(geoFromEvent(event));
       if (state && dataStates.has(state) && state !== zoomedState) {
@@ -621,6 +651,9 @@ async function main() {
         return;
       }
     }
+
+    const cell = cellFromEvent(event);
+    if (cell) { pinCell(cell); return; }
 
     clearPin();
   });
@@ -690,6 +723,11 @@ async function main() {
     const r  = mapArea.getBoundingClientRect();
     const nW = r.width, nH = r.height;
     svgEl.setAttribute("viewBox", `0 0 ${nW} ${nH}`);
+
+    // Skip projection rebuild while sidebar is CSS-transitioning; the transitionend
+    // handlers in zoomToFeature / resetZoom will reapply the correct zoom after.
+    if (_sidebarTransitioning) return;
+
     projection = d3.geoAlbers()
       .fitExtent([[PAD, PAD], [nW - PAD, nH - PAD]], westNation);
     pathGen = d3.geoPath().projection(projection);
@@ -702,8 +740,12 @@ async function main() {
       [rx1 + panBuf, ry1 + panBuf],
     ]);
 
-    zoomTransform = d3.zoomIdentity;
-    svg.call(zoom.transform, d3.zoomIdentity);
+    if (zoomedState) {
+      _applyZoomToState(zoomedState, 0);
+    } else {
+      zoomTransform = d3.zoomIdentity;
+      svg.call(zoom.transform, d3.zoomIdentity);
+    }
   }).observe(mapArea);
 }
 
