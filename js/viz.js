@@ -380,6 +380,7 @@ function tourAdvance() {
       return;
     }
     // ── Global tour: expand sidebar, show year description ────
+    document.getElementById('state-desc-section')?.classList.add('tour-hidden');
     tourStep = 'year';
     showTourDesc(TOUR_YEAR_DESCS[2018] ?? "");
     playBtn.textContent = "Next ▶"; playBtn.classList.remove("tour-end");
@@ -482,6 +483,7 @@ function tourAdvance() {
         playBtn.textContent = "Next ▶"; playBtn.classList.remove("tour-end");
       } else {
         // Last year — end tour, collapse sidebar, return to idle
+        document.getElementById('state-desc-section')?.classList.remove('tour-hidden');
         tourStep = null;
         hideTourDesc();
         frpOpacity = 1.00;

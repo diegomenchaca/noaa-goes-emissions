@@ -299,6 +299,9 @@ h1 {
   margin-top: 10px;
 }
 
+/* Hide state section during main tour */
+#state-desc-section.tour-hidden { display: none; }
+
 /* State description */
 #state-desc {
   font-size: 1.0rem;
