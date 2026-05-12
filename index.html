@@ -17,6 +17,7 @@
         and does land surface warming predict where new fire risk emerges?
       </p>
     </div>
+    <button id="nav-tour-btn" title="How to use this visualization">?</button>
   </header>
 
   <div id="main">
@@ -106,6 +107,27 @@
 </div><!-- /#app -->
 
 <div id="tooltip"></div>
+
+<!-- Nav tour -->
+<div id="nav-tour-overlay"></div>
+<div id="nav-tour-modal">
+  <div class="nav-modal-title">Learn to use this visualization</div>
+  <div class="nav-modal-body">Explore western U.S. wildfire intensity and land surface temperature from 2018–2024. Take a quick guided walkthrough to learn the controls.</div>
+  <div class="nav-modal-actions">
+    <button id="nav-modal-skip">Skip</button>
+    <button id="nav-modal-start">Start &#9654;</button>
+  </div>
+</div>
+<div id="nav-step-popup">
+  <div class="nav-step-header">
+    <span class="nav-step-title"></span>
+    <span class="nav-step-counter"></span>
+  </div>
+  <div class="nav-step-body"></div>
+  <div class="nav-step-actions">
+    <button id="nav-step-btn">Next &#9654;</button>
+  </div>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
