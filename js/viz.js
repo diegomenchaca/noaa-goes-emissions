@@ -851,6 +851,7 @@ const NAV_STEPS = [
     targetId: 'play-btn',
     placement: 'left',
     body: 'Click <b>Start Tour</b> to launch a guided year-by-year walkthrough, highlighting the most significant fire and surface temperature events across the western U.S. from 2018–2024.',
+    onShow: _navAnimateMainTour,
   },
   {
     title: 'Zoom into a State',
@@ -865,20 +866,32 @@ const NAV_STEPS = [
     targetId: 'info-section',
     placement: 'left',
     body: 'Click any cell to pin it. The chart shows how fire intensity (orange bars) and surface temperature anomaly (blue line) evolved at that location across all 7 years.',
-    onShow: _navPinCACell,
+    onShow: _navAnimatePinCells,
   },
   {
     title: 'State Mini Tour',
     targetId: 'play-btn',
     placement: 'left',
     body: 'When zoomed into a state, <b>Start Tour</b> runs a focused mini-tour — cycling through years with fire, pinning the most intense FRP cell and strongest LST anomaly cell in turn.',
+    onShow: _navAnimateMiniTour,
     btnText: 'End',
     onNext: _navEndCleanup,
   },
 ];
 
+function _lockNavStepBtn() {
+  const btn = document.getElementById('nav-step-btn');
+  if (btn) btn.disabled = true;
+}
+
+function _unlockNavStepBtn() {
+  const btn = document.getElementById('nav-step-btn');
+  if (btn) btn.disabled = false;
+}
+
 function _navAnimateOpacity() {
   clearTimeout(navAnimTimer);
+  _lockNavStepBtn();
   const lb = document.getElementById('opacity-lock');
   opacityLinked = true;
   if (lb) { lb.textContent = '🔒'; lb.classList.add('locked'); }
@@ -906,6 +919,7 @@ function _navAnimateOpacity() {
           if (lb) { lb.textContent = '🔒'; lb.classList.add('locked'); }
           frpOpacity = 1.00; lstOpacity = 0.20;
           updateOpacitySliders(); setYear(currentYear, false);
+          _unlockNavStepBtn();
         }, 600);
       }
       navAnimTimer = setTimeout(phase2, 400);
@@ -916,16 +930,127 @@ function _navAnimateOpacity() {
 
 function _navAnimateYearSlider() {
   clearTimeout(navAnimTimer);
+  _lockNavStepBtn();
   const forward = YEARS.slice(1); // 2019–2024
   let i = 0;
   function stepForward() {
     setYear(forward[i], true);
     i++;
-    navAnimTimer = i < forward.length
-      ? setTimeout(stepForward, 420)
-      : setTimeout(() => setYear(2018, true), 600);
+    if (i < forward.length) {
+      navAnimTimer = setTimeout(stepForward, 420);
+    } else {
+      navAnimTimer = setTimeout(() => {
+        setYear(2018, true);
+        navAnimTimer = setTimeout(_unlockNavStepBtn, 600);
+      }, 600);
+    }
   }
   navAnimTimer = setTimeout(stepForward, 400);
+}
+
+function _navAnimateMainTour() {
+  clearTimeout(navAnimTimer);
+  _lockNavStepBtn();
+
+  const DUR = Math.round(750 / 1.1); // ~682ms, 1.1× faster than normal zooms
+  const idahoFeature = statesFeature?.features.find(f => +f.id === 16) ?? null;
+  const nmFeature    = statesFeature?.features.find(f => +f.id === 35) ?? null;
+  const r = mapArea.getBoundingClientRect();
+
+  function calcZoomForFeature(feature) {
+    if (!feature || !pathGen) return null;
+    const [[x0, y0], [x1, y1]] = pathGen.bounds(feature);
+    const k  = Math.min(10, 0.85 / Math.max((x1 - x0) / r.width, (y1 - y0) / r.height));
+    const tx = r.width  / 2 - k * (x0 + x1) / 2;
+    const ty = r.height / 2 - k * (y0 + y1) / 2;
+    return d3.zoomIdentity.translate(tx, ty).scale(k);
+  }
+
+  function panToFeatureAtScale(feature, k) {
+    if (!feature || !pathGen) return null;
+    const [cx, cy] = pathGen.centroid(feature);
+    const tx = r.width  / 2 - k * cx;
+    const ty = r.height / 2 - k * cy;
+    return d3.zoomIdentity.translate(tx, ty).scale(k);
+  }
+
+  const tCA = calcZoomForFeature(californiaFeature);
+  if (!tCA) { _unlockNavStepBtn(); return; }
+
+  svg.transition().duration(DUR).call(zoom.transform, tCA);
+
+  navAnimTimer = setTimeout(() => {
+    const tID = panToFeatureAtScale(idahoFeature, tCA.k);
+    if (tID) svg.transition().duration(DUR).call(zoom.transform, tID);
+
+    navAnimTimer = setTimeout(() => {
+      const tNM = panToFeatureAtScale(nmFeature, tCA.k);
+      if (tNM) svg.transition().duration(DUR).call(zoom.transform, tNM);
+
+      navAnimTimer = setTimeout(() => {
+        svg.transition().duration(DUR).call(zoom.transform, d3.zoomIdentity);
+        navAnimTimer = setTimeout(_unlockNavStepBtn, DUR + 50);
+      }, DUR + 100);
+    }, DUR + 100);
+  }, DUR + 100);
+}
+
+function _navAnimatePinCells() {
+  clearTimeout(navAnimTimer);
+  _lockNavStepBtn();
+
+  if (!californiaFeature) { _unlockNavStepBtn(); return; }
+  const sc = stateCellsMap.get(californiaFeature) ?? [];
+  const top3 = [...sc]
+    .sort((a, b) => {
+      const fa = d3.sum(YEARS, yr => a.fire[yr]?.frp ?? 0);
+      const fb = d3.sum(YEARS, yr => b.fire[yr]?.frp ?? 0);
+      return fb - fa;
+    })
+    .slice(0, 3);
+
+  if (top3.length === 0) { _unlockNavStepBtn(); return; }
+
+  let i = 0;
+  function pinNext() {
+    if (i >= top3.length) { _unlockNavStepBtn(); return; }
+    pinCell(top3[i]);
+    i++;
+    navAnimTimer = setTimeout(pinNext, 750);
+  }
+  navAnimTimer = setTimeout(pinNext, 200);
+}
+
+function _navAnimateMiniTour() {
+  clearTimeout(navAnimTimer);
+  _lockNavStepBtn();
+
+  frpOpacity = 1.00; lstOpacity = 0.20;
+  updateOpacitySliders(); setYear(currentYear, false);
+
+  const SWITCH_MS = 350;
+  const pairs = [
+    [0.20, 1.00],
+    [1.00, 0.20],
+    [0.20, 1.00],
+    [1.00, 0.20],
+    [0.20, 1.00],
+    [1.00, 0.20],
+  ];
+  let i = 0;
+  function switchNext() {
+    if (i >= pairs.length) {
+      frpOpacity = 1.00; lstOpacity = 0.20;
+      updateOpacitySliders(); setYear(currentYear, false);
+      _unlockNavStepBtn();
+      return;
+    }
+    [frpOpacity, lstOpacity] = pairs[i];
+    updateOpacitySliders(); setYear(currentYear, false);
+    i++;
+    navAnimTimer = setTimeout(switchNext, SWITCH_MS);
+  }
+  navAnimTimer = setTimeout(switchNext, 300);
 }
 
 function _navZoomCalifornia() {
