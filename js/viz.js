@@ -2,7 +2,7 @@
 const YEARS      = [2018, 2019, 2020, 2021, 2022, 2023, 2024];
 const FRP_MIN    = 5;       // MW — cells below this are transparent
 const FRP_MAX    = 90000;   // MW — color scale ceiling
-const PLAY_SPEED = 1600;    // ms per year step
+const PLAY_SPEED = 1000;     // ms per year step
 const TOPO_URL   = "https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json";
 const PAD        = 28;      // px padding around projected extent
 const CELL_INSET = 0.06;    // ° inset on each edge → cells render at 88% size
@@ -19,13 +19,19 @@ let showLST       = true;
 let lstOpacity    = 0.20;
 let isPlaying     = false;
 let playTimer     = null;
-let pinnedCell    = null;
+let pinnedCell      = null;
+let pinnedCellState = null;
+let frpOpacity      = 1.00;
+let opacityLinked   = true;
+let tourStep        = null;   // null | 'year' | 'frp' | 'lst' | 'end'
+let dataStates      = null;   // populated in main()
 let zoomTransform = d3.zoomIdentity;
 let mouseDownXY   = null;
 let statesFeature = null;
 let stateCellsMap = new Map();
-let zoomedState          = null;
+let zoomedState           = null;
 let _sidebarTransitioning = false;
+let _clearPinTimer        = null;
 
 /* ── Color scales ───────────────────────────────────────────── */
 const frpColor = d3.scaleSequentialLog()
@@ -38,6 +44,37 @@ const lstColor = d3.scaleDiverging()
   .domain([-3, 0, 3])
   .interpolator(t => d3.interpolateRdBu(1 - t))
   .clamp(true);
+
+/* ── Tour content ───────────────────────────────────────────── */
+const TOUR_YEAR_DESCS = {
+  2018: "2018 was one of California's most destructive wildfire years to that point. The Camp Fire (November) destroyed the town of Paradise in Butte County — the deadliest U.S. wildfire in a century — while the Mendocino Complex (July–September) became the then-largest fire in California history at ~459,000 acres. Fire activity concentrated heavily along the northern Sierra Nevada and Coast Ranges. Land surface temperatures ran 1–2 °C above the 7-year mean across the Central Valley and Great Basin, reflecting the hot, dry summer that primed fuel conditions before the catastrophic fall fire weather.",
+  2019: "2019 offered a relative reprieve for California, aided by a wetter-than-average winter that kept fuel moisture elevated through midsummer — statewide acres burned were roughly 250,000, well below the decade average. The Kincade Fire (Sonoma County, October) and Walker Fire (Plumas County) were the most notable California events. The Pacific Northwest and Northern Rockies were comparatively more active. LST anomalies were mixed: the desert Southwest ran noticeably warm, while parts of the Pacific Coast and Great Basin stayed near or below their 7-year average, illustrating how year-to-year moisture variability shapes the spatial footprint of fire risk.",
+  2020: "2020 was a historic and unprecedented year for western wildfire. California burned over 4.2 million acres — more than double any prior year in state history. The August Complex became the first California 'gigafire' (>1 million acres), joined by the SCU, LNU, and North complexes. Simultaneously, Colorado endured its two largest fires on record: the Cameron Peak (~208,000 acres) and East Troublesome (~193,000 acres). A powerful heat dome in mid-August drove Death Valley to 130 °F and generated broad, extreme LST anomalies — the dataset's most intense — across virtually the entire western U.S. Fire and heat reinforced each other: warm, dry surfaces lowered fuel moisture, and the fires themselves released additional heat into an already stressed atmosphere.",
+  2021: "2021 is defined by two overlapping extremes. In late June, a once-in-a-millennium heat dome drove Portland, OR to 116 °F and Seattle, WA to 108 °F — 20–30 °F above normal — causing over 1,000 heat-related deaths across the Pacific Northwest and producing the dataset's most spatially concentrated LST anomalies. That same summer, California's Dixie Fire grew to ~963,000 acres, the largest single-origin fire in state history, while Oregon's Bootleg Fire (~400,000 acres) generated its own pyrocumulonimbus weather. The Caldor Fire threatened South Lake Tahoe in August. Together, these events illustrate how an extreme heat event in one season can directly precondition landscape-scale wildfire for months afterward.",
+  2022: "2022 brought a partial reprieve from the most extreme fire years, though conditions remained significantly above pre-2018 baselines. California burned roughly 362,000 acres — the Mosquito Fire (Placer/El Dorado counties, ~76,000 acres) was the largest. Montana and Idaho showed above-average FRP despite lower totals elsewhere, with persistent mid-level fire signals across multiple cells suggesting widespread, distributed burning. LST anomalies were spatially heterogeneous: the Great Basin and desert Southwest remained warm (consistent with ongoing multi-year drought), while parts of the Pacific Coast trended closer to average — a La Niña signal that would intensify dramatically the following winter.",
+  2023: "2023 was shaped as much by smoke as by fire within the data domain. Catastrophic wildfires across British Columbia and Alberta — the worst Canadian fire season on record — blanketed the northern and central U.S. in smoke for weeks, attenuating some satellite FRP retrievals. Within the western U.S., fire activity was moderate: the Smith River Complex (Del Norte County, CA, ~100,000 acres) and scattered Oregon and Washington events were the most prominent. California's fire season was suppressed by a record-wet winter driven by an emerging El Niño. LST anomalies reflected this moisture: some northern areas showed near-average or below-average surface temperatures, while the southern desert Southwest maintained its persistent warm signal.",
+  2024: "2024 reasserted California as the dominant fire region. The Park Fire (Butte/Tehama counties, late July) grew to ~429,000 acres — the second-largest fire in California history — producing intense FRP signals across the northern Sierra Nevada. Southern California's Line Fire and Airport Fire added to the year's totals. New Mexico and Colorado saw above-average fire activity as well. LST anomalies continued the multi-year warming trend: much of the Great Basin, southern California, and desert Southwest ran 1–2 °C above the 7-year mean, which itself reflects a decade of warming — meaning the apparent anomalies in 2024 understate the absolute departure from longer historical baselines.",
+};
+
+const TOUR_FRP_CONTEXT = {
+  2018: "FRP is a direct satellite measure of the heat released by active burning — higher values indicate more intense combustion, not necessarily larger area. The Camp Fire's extreme FRP in November reflects critically low fuel moisture after a dry summer, while the Mendocino Complex produced sustained high values over a longer burn window earlier in the season.",
+  2019: "Despite the lower statewide totals, this region showed FRP signals elevated relative to its own multi-year baseline, reflecting the sensitivity of these ecosystems to late-summer drought even in relatively 'moderate' fire years — a reminder that the western baseline for fire activity has shifted upward.",
+  2020: "This region produced some of the highest FRP values in the entire 2018–2024 dataset. The convergence of record heat, multi-year drought, and decades of accumulated fuel loads created conditions where fires burned simultaneously at extraordinary intensity across a massive geographic extent — a pattern without modern precedent.",
+  2021: "The Dixie Fire's FRP signature was notable for its duration: sustained high-intensity burning over weeks, not days. The Bootleg Fire in Oregon was so energetic it generated pyrocumulonimbus clouds — a sign of near-explosive combustion that produces extreme FRP outliers and creates fire-driven weather that actively resists suppression.",
+  2022: "The elevated FRP in the Northern Rockies this year reflected widespread, distributed burning — many cells showing moderate but persistent fire signals rather than a single catastrophic event. This pattern is characteristic of drought-driven range fires and is often associated with grass and shrub fuels that recover quickly but also ignite readily.",
+  2023: "Canadian wildfire smoke may have slightly attenuated GOES FRP retrievals during peak smoke events, particularly in northern cells. The values here represent active burning within the CONUS data domain — entirely separate from the far-larger Canadian fire events occurring just north of the 49°N data boundary.",
+  2024: "The Park Fire's FRP signature was spatially concentrated in the northern Sierra Nevada but reached extreme intensity during its rapid growth phase in late July. The desert Southwest also contributed notable FRP readings, with several Arizona and New Mexico cells surpassing the high-intensity threshold as drought conditions persisted through the summer.",
+};
+
+const TOUR_LST_CONTEXT = {
+  2018: "LST anomaly measures deviation from each cell's own 2018–2024 summer mean — a positive value means this location was warmer than its own multi-year average. The strongest anomalies in 2018 appeared in the Central Valley and Mojave Desert, where already-extreme summer temperatures ran even hotter, directly amplifying fire weather risk through the September–November window.",
+  2019: "The desert Southwest's warm LST anomalies in 2019 stand out against an otherwise mixed national pattern. Persistent above-average surface heat in Arizona and New Mexico — even in a lower fire year — underscores that LST warming is not simply a byproduct of fire; it is also a precondition that increases ignition risk and accelerates fuel drying independently of precipitation.",
+  2020: "The 2020 LST pattern is dominated by the August heat dome, which produced the most spatially coherent and intense positive anomalies in the dataset. The warm anomaly here is not just large — it is also historically unusual in its geographic extent: virtually the entire western U.S. simultaneously exceeded its own already-elevated 7-year average, a signature of a synoptic-scale atmospheric forcing event rather than local land-surface feedback.",
+  2021: "The June 2021 Pacific Northwest heat dome produced the dataset's most extreme, spatially focused LST anomalies — concentrated in Washington, Oregon, and Idaho, where surface temperatures were 2–3 °C above a mean that already reflects a decade of warming. The event was attributed to anthropogenic climate change; statistical analyses suggest it would have been virtually impossible without it. The anomalies here directly preceded and intensified the fire season that followed.",
+  2022: "The 2022 LST pattern reveals the persistence of the multi-year drought signal in the Great Basin and desert Southwest. Even without a major heat dome, Nevada, Utah, and Arizona continued running above their own 7-year averages — a consequence of depleted soil moisture and reduced evaporative cooling that keeps surface temperatures elevated across seasons, maintaining chronic fire-weather conditions.",
+  2023: "The contrast between cooling in the northern Pacific states and persistent warmth in the southern desert Southwest in 2023 is one of the most instructive spatial patterns in the dataset. It shows how a single-year atmospheric forcing (a wet El Niño winter) can temporarily suppress LST anomalies in some regions while the longer-term drought and warming signal persists in others.",
+  2024: "The 2024 LST anomalies, though moderate by 2020–2021 standards, are particularly significant in context: they represent above-average temperatures relative to a 7-year mean that already embeds the extreme warmth of 2020 and 2021. The persistent positive signal across the Great Basin and desert Southwest reflects a self-reinforcing feedback — dry soils reduce evaporative cooling, which elevates LST, which further dries soils — that is becoming the new baseline condition across these landscapes.",
+};
 
 /* ── DOM refs ──────────────────────────────────────────────── */
 const mapArea    = document.getElementById("map-area");
@@ -96,7 +133,32 @@ function describeLST(anom) {
 }
 
 /* ── State description ──────────────────────────────────────── */
-function describeState(stateFeature, year) {
+const STATE_AVG_DESCS = {
+  "Arizona":        "Arizona's fire season typically peaks in May–June before the summer monsoon arrives, with the central highlands, Mogollon Rim, and sky island ranges generating the most consistent activity. Desert lowland surfaces routinely run above the regional mean, making LST anomalies here among the most persistent in the dataset.",
+  "California":     "California's wildfire season historically spans June through November, concentrated in the Sierra Nevada foothills, Coast Ranges, and Southern California chaparral, with dry offshore Diablo and Santa Ana winds driving the most destructive events. Interior valleys and the Central Valley floor consistently record the state's warmest LST anomalies during late summer.",
+  "Colorado":       "Colorado's fire season centers on the Front Range foothills, western slope canyons, and San Juan Mountains, peaking from May through July before monsoon moisture arrives from the south. Drought years see fire extend into fall, while the strongest LST anomalies typically appear in the lower-elevation shrublands and eastern plains.",
+  "Idaho":          "Idaho experiences persistent fire activity in the central mountains and Snake River Plain, where fuel suppression over decades has accumulated heavy loads in sagebrush and mixed-conifer forests. LST anomalies are strongly tied to late-spring snowpack — low-snowpack years produce warmer, drier summers with substantially elevated fire risk.",
+  "Montana":        "Montana's fire activity concentrates in the Rocky Mountain Front, the Bitterroot Valley, and forested drainages along the Continental Divide, with peak season running July through September. Above-average LST anomalies in the northern plains and eastern foothills tend to coincide with summers of reduced precipitation and early snowmelt.",
+  "Nevada":         "Nevada is predominantly Great Basin desert shrubland, where invasive cheatgrass has fundamentally changed the fire regime by creating continuous fuel beds across landscapes that historically burned infrequently. LST anomalies are among the most persistent in the dataset, as scarce soil moisture allows surface temperatures to track air temperatures closely with minimal evaporative cooling.",
+  "New Mexico":     "New Mexico's fire season peaks in May–June before the North American Monsoon arrives in July and dramatically reduces ignition risk for the remainder of summer. The highest fire radiative power values typically come from the Jemez Mountains, Mogollon Rim, and Sacramento Mountains, where dense ponderosa pine forests interact with drought-driven fuel drying.",
+  "Oregon":         "Oregon's fire regime divides sharply between the wet west slope of the Cascades and the dry high-desert east, with large fire years driven by late-season heat and wind events that push fire across the Cascades into fuels not adapted to frequent burning. LST anomalies in the eastern high desert are shaped by atmospheric blocking patterns that suppress the onshore marine airflow that normally moderates summer temperatures.",
+  "Utah":           "Utah's fire activity is broadly distributed across the Colorado Plateau, Wasatch Front foothills, and Great Basin shrublands, with peak season running June through September. Cheatgrass invasion is steadily transforming the fire regime of the state's lowland basin regions, while higher-elevation forests remain sensitive to multi-year drought cycles.",
+  "Washington":     "Washington's fire activity concentrates in the Okanogan Highlands and the rain-shadow ponderosa pine and sagebrush landscape east of the Cascades, where dry summers increasingly override the cool maritime influence. Extreme fire years are tightly coupled to Pacific blocking events that suppress onshore cooling and can push LST anomalies sharply above average for extended periods.",
+  "Wyoming":        "Wyoming's fires occur primarily in the Greater Yellowstone Ecosystem, the Wind River Range, and the sagebrush steppe of the Big Horn Basin, with fire activity generally lower in absolute terms than Pacific states. Multi-year drought cycles can dramatically amplify risk, particularly in the state's high-elevation lodgepole pine forests where stand-replacing fires have long been part of the natural regime.",
+  "North Dakota":   "The western North Dakota badlands included in this dataset see limited fire activity, primarily in the dry shortgrass and sagebrush terrain of the Little Missouri Badlands during drought years.",
+  "South Dakota":   "The western South Dakota portion of this dataset spans the Black Hills ponderosa pine forest and surrounding badlands, where fire activity increases markedly during dry spring and early summer conditions.",
+  "Nebraska":       "The western Nebraska Panhandle included here is semi-arid sandhill and mixed-grass rangeland where wildfire is episodic, driven largely by winter-spring precipitation that sets fuel loads for the following fire season.",
+  "Kansas":         "The western Kansas High Plains included in this dataset are predominantly shortgrass prairie and cropland, with limited but periodic fire activity that intensifies during drought-driven years of above-average fine fuel accumulation.",
+  "Oklahoma":       "The western Oklahoma Panhandle included here is open shortgrass and mixed-grass prairie where fire historically spread rapidly under southerly winds; wildfire risk tracks winter-spring precipitation closely.",
+  "Texas":          "The Trans-Pecos rangeland and Chihuahuan Desert of far west Texas included in this dataset experience episodic fire driven by above-average winter rains that produce grass fuel loads, followed by spring drought and persistent wind.",
+};
+
+const PARTIAL_100W = new Set([
+  "North Dakota", "South Dakota", "Nebraska", "Kansas", "Oklahoma", "Texas"
+]);
+const PARTIAL_32N = new Set(["Arizona", "New Mexico", "Texas"]);
+
+function describeState(stateFeature, year, withContext = false) {
   if (!stateFeature) return "";
   const name       = stateFeature.properties.name;
   const sc         = stateCellsMap.get(stateFeature) ?? [];
@@ -128,15 +190,199 @@ function describeState(stateFeature, year) {
   } else {
     text += ".";
   }
+  const bounds = [];
+  if (PARTIAL_100W.has(name)) bounds.push("west of the 100°W meridian");
+  if (PARTIAL_32N.has(name))  bounds.push("north of 32°N");
+  if (bounds.length) {
+    text += ` (Data covers only the portion of this state ${bounds.join(" and ")}.)`;
+  }
+  if (withContext && STATE_AVG_DESCS[name]) {
+    text = STATE_AVG_DESCS[name] + "\n\n" + text;
+  }
   return text;
 }
 
 function updateStateDesc(stateFeature) {
   const el = document.getElementById("state-desc");
   if (!el) return;
-  // When zoomed into a state, lock the description to that state regardless of hover
-  const effective = zoomedState ?? stateFeature;
-  el.textContent = effective ? describeState(effective, currentYear) : "";
+  const effective   = zoomedState ?? pinnedCellState ?? stateFeature;
+  const withContext = effective != null && effective === zoomedState;
+  if (!effective) { el.textContent = ""; return; }
+  const desc = describeState(effective, currentYear, withContext);
+  if (withContext && STATE_AVG_DESCS[effective.properties?.name]) {
+    const [avg, yearly] = desc.split("\n\n");
+    el.innerHTML = "";
+    const p1 = document.createElement("p");
+    p1.style.marginBottom = "0.6em";
+    p1.textContent = avg;
+    const p2 = document.createElement("p");
+    p2.textContent = yearly;
+    el.append(p1, p2);
+  } else {
+    el.textContent = desc;
+  }
+}
+
+/* ── Tour helpers ───────────────────────────────────────────── */
+function findBestFRPTarget(year) {
+  let bestState = null, bestTotal = 0;
+  statesFeature.features.forEach(f => {
+    const cells = stateCellsMap.get(f) ?? [];
+    const total = d3.sum(cells, c => c.fire[year]?.frp ?? 0);
+    if (total > bestTotal) { bestTotal = total; bestState = f; }
+  });
+  const sc = stateCellsMap.get(bestState) ?? [];
+  const bestCell = sc.reduce((a, c) =>
+    (c.fire[year]?.frp ?? 0) > (a?.fire[year]?.frp ?? 0) ? c : a, null);
+  return { state: bestState, cell: bestCell };
+}
+
+function findBestLSTTarget(year) {
+  let bestState = null, bestAvg = -Infinity;
+  statesFeature.features.forEach(f => {
+    const cells = stateCellsMap.get(f) ?? [];
+    const vals  = cells.map(c => c.lst[year]?.anomaly).filter(v => v != null);
+    if (!vals.length) return;
+    const avg = d3.mean(vals);
+    if (avg > bestAvg) { bestAvg = avg; bestState = f; }
+  });
+  const sc = stateCellsMap.get(bestState) ?? [];
+  const bestCell = sc.reduce((a, c) => {
+    const va = Math.abs(c.lst[year]?.anomaly ?? 0);
+    const vb = Math.abs(a?.lst[year]?.anomaly ?? 0);
+    return va > vb ? c : a;
+  }, null);
+  return { state: bestState, cell: bestCell };
+}
+
+function generateFRPDesc(year, state, cell) {
+  const name  = state?.properties?.name ?? "the region";
+  const cells = stateCellsMap.get(state) ?? [];
+  const fired = cells.filter(c => (c.fire[year]?.frp ?? 0) >= FRP_MIN);
+  const total = d3.sum(fired, c => c.fire[year].frp);
+  const fmt   = v => v >= 1000 ? `${(v / 1000).toFixed(0)}k MW` : `${Math.round(v)} MW`;
+  const peak  = cell?.fire[year]?.frp ?? 0;
+  return `${name} recorded the most intense fire activity in the western U.S. in ${year} — `
+    + `${fired.length} active fire cell${fired.length !== 1 ? "s" : ""} totaling ${fmt(total)}, `
+    + `with a peak cell reaching ${fmt(peak)}. `
+    + (TOUR_FRP_CONTEXT[year] ?? "");
+}
+
+function generateLSTDesc(year, state, cell) {
+  const name  = state?.properties?.name ?? "the region";
+  const cells = stateCellsMap.get(state) ?? [];
+  const vals  = cells.map(c => c.lst[year]?.anomaly).filter(v => v != null);
+  const avg   = vals.length ? d3.mean(vals) : null;
+  const max   = vals.length ? d3.max(vals)  : null;
+  const fmt   = v => `${v > 0 ? "+" : ""}${v.toFixed(1)} °C`;
+  return `${name} showed the most extreme land surface temperature anomaly in ${year} — `
+    + (avg != null ? `averaging ${fmt(avg)} above the 7-year mean` : "no LST data available")
+    + (max != null ? `, peaking at ${fmt(max)} in individual cells. ` : ". ")
+    + (TOUR_LST_CONTEXT[year] ?? "");
+}
+
+function showTourDesc(text) {
+  const el = document.getElementById("tour-desc");
+  if (!el) return;
+  el.textContent = text;
+  el.style.display = "block";
+}
+
+function hideTourDesc() {
+  const el = document.getElementById("tour-desc");
+  if (el) el.style.display = "none";
+}
+
+function updateOpacitySliders() {
+  const frpEl = document.getElementById("frp-opacity");
+  const lstEl = document.getElementById("lst-opacity");
+  if (frpEl) frpEl.value = Math.round(frpOpacity * 100);
+  if (lstEl) lstEl.value = Math.round(lstOpacity * 100);
+}
+
+function tourAdvance() {
+  if (tourStep === null) {
+    // PLAY → expand sidebar, show year description
+    tourStep = 'year';
+    showTourDesc(TOUR_YEAR_DESCS[currentYear] ?? "");
+    playBtn.textContent = "Next ▶";
+    if (!sidebar.classList.contains("zoomed")) {
+      _sidebarTransitioning = true;
+      sidebar.classList.add("zoomed");
+      sidebar.addEventListener("transitionend", () => {
+        _sidebarTransitioning = false;
+      }, { once: true });
+    }
+    return;
+  }
+
+  if (tourStep === 'year') {
+    // Zoom to FRP hotspot — sidebar already expanded, smooth zoom
+    tourStep = 'frp';
+    const { state, cell } = findBestFRPTarget(currentYear);
+    if (state) zoomToFeature(state);
+    if (cell)  pinCell(cell);
+    showTourDesc(generateFRPDesc(currentYear, state, cell));
+    return;
+  }
+
+  if (tourStep === 'frp') {
+    // Zoom to LST hotspot — sidebar already expanded, smooth zoom
+    tourStep = 'lst';
+    const { state, cell } = findBestLSTTarget(currentYear);
+    if (state) zoomToFeature(state);
+    if (cell)  pinCell(cell);
+    frpOpacity = 0.20;
+    lstOpacity = 1.00;
+    setYear(currentYear, false);
+    updateOpacitySliders();
+    showTourDesc(generateLSTDesc(currentYear, state, cell));
+    // Last year — signal that next click ends the tour
+    if (YEARS.indexOf(currentYear) === YEARS.length - 1) {
+      playBtn.textContent = "End";
+    }
+    return;
+  }
+
+  if (tourStep === 'lst') {
+    // Smooth zoom out; defer year change until zoom completes
+    clearPin();
+    zoomedState = null;
+    statePaths.classed("state-dim",    false);
+    statePaths.classed("state-zoomed", false);
+    updateStateDesc(null);
+    svg.transition().duration(600).call(zoom.transform, d3.zoomIdentity);
+
+    frpOpacity = 1.00;
+    lstOpacity = 0.20;
+    updateOpacitySliders();
+
+    playBtn.disabled = true;
+    const idx = YEARS.indexOf(currentYear);
+    setTimeout(() => {
+      playBtn.disabled = false;
+      if (idx < YEARS.length - 1) {
+        setYear(YEARS[idx + 1], true);
+        tourStep = 'year';
+        showTourDesc(TOUR_YEAR_DESCS[YEARS[idx + 1]] ?? "");
+        playBtn.textContent = "Next ▶";
+      } else {
+        // Last year — end tour, collapse sidebar, return to idle
+        tourStep = null;
+        hideTourDesc();
+        frpOpacity = 1.00;
+        lstOpacity = 0.20;
+        setYear(currentYear, false);
+        updateOpacitySliders();
+        playBtn.textContent = "▶ Play";
+        _sidebarTransitioning = true;
+        sidebar.classList.remove("zoomed");
+        sidebar.addEventListener("transitionend", () => {
+          _sidebarTransitioning = false;
+        }, { once: true });
+      }
+    }, 650);
+  }
 }
 
 /* ── Year update ────────────────────────────────────────────── */
@@ -158,7 +404,7 @@ function setYear(yr, animate = true) {
     .attr("fill-opacity", d => {
       if (!showFire) return 0;
       const frp = d.properties.fire[yr]?.frp ?? 0;
-      return frp >= FRP_MIN ? 0.88 : 0;
+      return frp >= FRP_MIN ? frpOpacity : 0;
     });
 
   lstPaths.transition(t)
@@ -215,25 +461,28 @@ function _applyZoomToState(feature, duration = 750) {
 function zoomToFeature(feature) {
   zoomedState = feature;
   updateStateDesc(null);
-  statePaths.classed("state-dim", d => d !== feature);
+  statePaths.classed("state-dim",    d => d !== feature);
+  statePaths.classed("state-zoomed", d => d === feature);
   if (pinnedCell) renderSparkline(pinnedCell, currentYear);
 
-  _sidebarTransitioning = true;
-  sidebar.classList.add("zoomed");
-
-  // Zoom starts immediately with current (pre-expansion) map dims
-  _applyZoomToState(feature, 750);
-
-  // After sidebar finishes expanding, snap-correct centering for new dims
-  sidebar.addEventListener("transitionend", () => {
-    _sidebarTransitioning = false;
-    _applyZoomToState(feature, 0);
-  }, { once: true });
+  if (sidebar.classList.contains("zoomed")) {
+    // Sidebar already expanded — no CSS transition fires, just re-zoom
+    _applyZoomToState(feature, 750);
+  } else {
+    _sidebarTransitioning = true;
+    sidebar.classList.add("zoomed");
+    _applyZoomToState(feature, 750);
+    sidebar.addEventListener("transitionend", () => {
+      _sidebarTransitioning = false;
+      _applyZoomToState(feature, 0);
+    }, { once: true });
+  }
 }
 
 function resetZoom() {
   zoomedState = null;
-  statePaths.classed("state-dim", false);
+  statePaths.classed("state-dim",    false);
+  statePaths.classed("state-zoomed", false);
   updateStateDesc(hoveredStateFeature);
   if (pinnedCell) renderSparkline(pinnedCell, currentYear);
 
@@ -250,18 +499,22 @@ function resetZoom() {
 /* ── Pin / clear sparkline ──────────────────────────────────── */
 function pinCell(cell) {
   pinnedCell = cell;
+  pinnedCellState = stateAt([cell.lon + 0.5, cell.lat + 0.5]);
   firePaths.classed("pinned", d =>
     d.properties.lat === cell.lat && d.properties.lon === cell.lon);
   d3.select("#cell-hint").style("display", "none");
   renderSparkline(cell, currentYear);
+  updateStateDesc(hoveredStateFeature);
 }
 
 function clearPin() {
   pinnedCell = null;
+  pinnedCellState = null;
   firePaths.classed("pinned", false);
   d3.select("#cell-hint").style("display", "block");
   d3.select("#sparkline-wrap").html("");
   d3.select("#cell-desc-wrap").html("");
+  updateStateDesc(hoveredStateFeature);
 }
 
 /* ── Geography from event ────────────────────────────────────── */
@@ -303,8 +556,8 @@ function renderSparkline(cellData, activeYr) {
   wrap.append("div").attr("class", "spark-cell-loc")
     .text(`${lat}°N  ${lon}°W`);
 
-  const W = zoomedState ? 340 : 260;
-  const H = zoomedState ? 158 : 124;
+  const W = zoomedState ? 460 : 260;
+  const H = zoomedState ? 190 : 124;
   const m = { top: 14, right: 36, bottom: 20, left: 44 };
   const w = W - m.left - m.right;
   const h = H - m.top - m.bottom;
@@ -503,7 +756,7 @@ async function main() {
   });
 
   // States that have ≥1 data cell — the only states that are hoverable / zoomable
-  const dataStates = new Set(
+  dataStates = new Set(
     statesFeature.features.filter(f => (stateCellsMap.get(f) ?? []).length > 0)
   );
 
@@ -572,7 +825,7 @@ async function main() {
     .selectAll("path")
     .data(statesFeature.features)
     .join("path")
-      .attr("class", "state-border")
+      .attr("class", d => `state-border${dataStates.has(d) ? " state-has-data" : ""}`)
       .attr("d", pathGen);
 
   // ── Zoom ──────────────────────────────────────────────────
@@ -653,14 +906,26 @@ async function main() {
     }
 
     const cell = cellFromEvent(event);
-    if (cell) { pinCell(cell); return; }
+    if (cell) {
+      clearTimeout(_clearPinTimer);
+      if (pinnedCell && pinnedCell.lat === cell.lat && pinnedCell.lon === cell.lon) {
+        // Defer so a dblclick on the same cell can cancel this and zoom instead
+        _clearPinTimer = setTimeout(() => { _clearPinTimer = null; clearPin(); }, 250);
+      } else {
+        pinCell(cell);
+      }
+      return;
+    }
 
+    clearTimeout(_clearPinTimer);
     clearPin();
   });
 
   // Double-click: zoom to western state only; if already zoomed, reset
   svg.on("dblclick", event => {
     event.preventDefault();
+    clearTimeout(_clearPinTimer);
+    _clearPinTimer = null;
     if (zoomTransform.k > 1.5) {
       resetZoom();
       return;
@@ -677,11 +942,30 @@ async function main() {
   });
 
   // ── Sidebar controls ──────────────────────────────────────
-  playBtn.addEventListener("click", () => isPlaying ? stopPlay() : startPlay());
+  playBtn.addEventListener("click", tourAdvance);
 
   yearSlider.addEventListener("input", function() {
-    stopPlay();
-    setYear(+this.value, false);
+    const yr = +this.value;
+    if (tourStep !== null) {
+      // Cancel any in-flight zoom, reset view, rewind/fast-forward tour to this year
+      playBtn.disabled = false;
+      if (zoomedState) {
+        zoomedState = null;
+        statePaths.classed("state-dim",    false);
+        statePaths.classed("state-zoomed", false);
+        svg.call(zoom.transform, d3.zoomIdentity);
+      }
+      clearPin();
+      frpOpacity = 1.00;
+      lstOpacity = 0.20;
+      updateOpacitySliders();
+      setYear(yr, false);
+      tourStep = 'year';
+      showTourDesc(TOUR_YEAR_DESCS[yr] ?? "");
+      playBtn.textContent = "Next ▶";
+    } else {
+      setYear(yr, false);
+    }
   });
 
   document.getElementById("fire-toggle").addEventListener("change", function() {
@@ -694,9 +978,28 @@ async function main() {
     setYear(currentYear, false);
   });
 
+  document.getElementById("frp-opacity").addEventListener("input", function() {
+    frpOpacity = +this.value / 100;
+    if (opacityLinked) {
+      lstOpacity = Math.min(1, Math.max(0.2, 1.2 - frpOpacity));
+      document.getElementById("lst-opacity").value = Math.round(lstOpacity * 100);
+    }
+    setYear(currentYear, false);
+  });
+
   document.getElementById("lst-opacity").addEventListener("input", function() {
     lstOpacity = +this.value / 100;
+    if (opacityLinked) {
+      frpOpacity = Math.min(1, Math.max(0.2, 1.2 - lstOpacity));
+      document.getElementById("frp-opacity").value = Math.round(frpOpacity * 100);
+    }
     setYear(currentYear, false);
+  });
+
+  document.getElementById("opacity-lock").addEventListener("click", function() {
+    opacityLinked = !opacityLinked;
+    this.textContent = opacityLinked ? "🔒" : "🔓";
+    this.classList.toggle("locked", opacityLinked);
   });
 
   // Layer label hover → popup description
@@ -705,7 +1008,7 @@ async function main() {
       tooltip.style("display", "block")
         .style("left", `${e.clientX + 15}px`)
         .style("top",  `${e.clientY - 12}px`)
-        .html(`<div class="tip-muted" style="max-width:230px;line-height:1.55">${el.dataset.tip}</div>`);
+        .html(`<div class="tip-muted" style="max-width:230px;line-height:1.55;font-size:0.88rem">${el.dataset.tip}</div>`);
     });
     el.addEventListener("mousemove", e => {
       tooltip.style("left", `${e.clientX + 15}px`)
