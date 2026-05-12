@@ -197,6 +197,8 @@ h1 {
 #play-btn:hover { background: var(--fire-hi); }
 #play-btn.playing { background: #3d4553; }
 #play-btn.playing:hover { background: #4d5563; }
+#play-btn.tour-end { background: #c0392b; }
+#play-btn.tour-end:hover { background: #e74c3c; }
 
 /* Layers */
 .section-label {

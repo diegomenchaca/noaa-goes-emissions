@@ -23,7 +23,7 @@ let pinnedCell      = null;
 let pinnedCellState = null;
 let frpOpacity      = 1.00;
 let opacityLinked   = true;
-let tourStep        = null;   // null | 'year' | 'frp' | 'lst' | 'end'
+let tourStep        = null;   // null | 'year' | 'frp' | 'lst' | 'mini-frp' | 'mini-lst'
 let dataStates      = null;   // populated in main()
 let zoomTransform = d3.zoomIdentity;
 let mouseDownXY   = null;
@@ -281,6 +281,55 @@ function generateLSTDesc(year, state, cell) {
     + (TOUR_LST_CONTEXT[year] ?? "");
 }
 
+/* ── Mini-tour helpers (state-scoped) ───────────────────────── */
+function stateHasFire(state, year) {
+  const sc = stateCellsMap.get(state) ?? [];
+  return sc.some(c => (c.fire[year]?.frp ?? 0) >= FRP_MIN);
+}
+
+// Returns the next year >= fromYear (inclusive) where state has fire, or null if none.
+function nextFireYear(state, fromYear) {
+  return YEARS.find(yr => yr >= fromYear && stateHasFire(state, yr)) ?? null;
+}
+
+function findBestFRPCellInState(state, year) {
+  const sc = stateCellsMap.get(state) ?? [];
+  return sc.reduce((a, c) =>
+    (c.fire[year]?.frp ?? 0) > (a?.fire[year]?.frp ?? 0) ? c : a, null);
+}
+
+function findBestLSTCellInState(state, year) {
+  const sc = stateCellsMap.get(state) ?? [];
+  return sc.reduce((a, c) => {
+    const va = Math.abs(c.lst[year]?.anomaly ?? 0);
+    const vb = Math.abs(a?.lst[year]?.anomaly ?? 0);
+    return va > vb ? c : a;
+  }, null);
+}
+
+function generateMiniFRPDesc(state, cell, year) {
+  if (!cell || (cell.fire[year]?.frp ?? 0) < FRP_MIN) {
+    return `No significant fire activity was detected in ${state?.properties?.name ?? "this state"} during ${year}.`;
+  }
+  const frp  = cell.fire[year].frp;
+  const lat  = (cell.lat + 0.5).toFixed(0);
+  const lon  = Math.abs(cell.lon + 0.5).toFixed(0);
+  const name = state?.properties?.name ?? "this state";
+  const fmt  = v => v >= 1000 ? `${(v / 1000).toFixed(1)}k MW` : `${Math.round(v)} MW`;
+  return `The most intense fire cell in ${name} in ${year} was near ${lat}°N, ${lon}°W — ${fmt(frp)} FRP. ${describeFRP(frp)}`;
+}
+
+function generateMiniLSTDesc(state, cell, year) {
+  const name = state?.properties?.name ?? "this state";
+  if (!cell) return `No land surface temperature data is available for ${name} in ${year}.`;
+  const anom = cell.lst[year]?.anomaly;
+  if (anom == null) return `No land surface temperature data is available for ${name} in ${year}.`;
+  const lat  = (cell.lat + 0.5).toFixed(0);
+  const lon  = Math.abs(cell.lon + 0.5).toFixed(0);
+  const sign = anom > 0 ? "+" : "";
+  return `The strongest surface temperature anomaly in ${name} in ${year} was near ${lat}°N, ${lon}°W — ${sign}${anom.toFixed(1)}°C vs. the 7-year mean. ${describeLST(anom)}`;
+}
+
 function showTourDesc(text) {
   const el = document.getElementById("tour-desc");
   if (!el) return;
@@ -302,16 +351,78 @@ function updateOpacitySliders() {
 
 function tourAdvance() {
   if (tourStep === null) {
-    // PLAY → expand sidebar, show year description
+    // Always start from 2018 regardless of current year
+    clearPin();
+    frpOpacity = 1.00; lstOpacity = 0.20;
+    updateOpacitySliders();
+    setYear(2018, false);
+
+    if (zoomedState) {
+      // ── Mini tour: state already zoomed ──────────────────────
+      const firstYear = nextFireYear(zoomedState, 2018);
+      if (!firstYear) {
+        // State has no fire in any year — nothing to tour
+        hideTourDesc();
+        playBtn.textContent = "▶ Start Tour"; playBtn.classList.remove("tour-end");
+        return;
+      }
+      setYear(firstYear, false);
+      tourStep = 'mini-frp';
+      frpOpacity = 1.00; lstOpacity = 0.20;
+      updateOpacitySliders();
+      const frpCell = findBestFRPCellInState(zoomedState, firstYear);
+      if (frpCell) pinCell(frpCell);
+      showTourDesc(generateMiniFRPDesc(zoomedState, frpCell, firstYear));
+      playBtn.textContent = "Next ▶"; playBtn.classList.remove("tour-end");
+      return;
+    }
+    // ── Global tour: expand sidebar, show year description ────
     tourStep = 'year';
-    showTourDesc(TOUR_YEAR_DESCS[currentYear] ?? "");
-    playBtn.textContent = "Next ▶";
+    showTourDesc(TOUR_YEAR_DESCS[2018] ?? "");
+    playBtn.textContent = "Next ▶"; playBtn.classList.remove("tour-end");
     if (!sidebar.classList.contains("zoomed")) {
       _sidebarTransitioning = true;
       sidebar.classList.add("zoomed");
       sidebar.addEventListener("transitionend", () => {
         _sidebarTransitioning = false;
       }, { once: true });
+    }
+    return;
+  }
+
+  // ── Mini tour steps ───────────────────────────────────────────
+  if (tourStep === 'mini-frp') {
+    tourStep = 'mini-lst';
+    frpOpacity = 0.20; lstOpacity = 1.00;
+    updateOpacitySliders();
+    const cell = findBestLSTCellInState(zoomedState, currentYear);
+    if (cell) pinCell(cell);
+    setYear(currentYear, false);
+    showTourDesc(generateMiniLSTDesc(zoomedState, cell, currentYear));
+    if (!nextFireYear(zoomedState, currentYear + 1)) playBtn.textContent = "End"; playBtn.classList.add("tour-end");
+    return;
+  }
+
+  if (tourStep === 'mini-lst') {
+    clearPin();
+    frpOpacity = 1.00; lstOpacity = 0.20;
+    updateOpacitySliders();
+    const nextYear = nextFireYear(zoomedState, currentYear + 1);
+    if (!nextYear) {
+      // No more years with fire — end mini tour, stay zoomed
+      tourStep = null;
+      hideTourDesc();
+      setYear(currentYear, false);
+      playBtn.textContent = "▶ Start Tour"; playBtn.classList.remove("tour-end");
+    } else {
+      setYear(nextYear, true);
+      tourStep = 'mini-frp';
+      frpOpacity = 1.00; lstOpacity = 0.20;
+      updateOpacitySliders();
+      const cell = findBestFRPCellInState(zoomedState, nextYear);
+      if (cell) pinCell(cell);
+      showTourDesc(generateMiniFRPDesc(zoomedState, cell, nextYear));
+      playBtn.textContent = "Next ▶"; playBtn.classList.remove("tour-end");
     }
     return;
   }
@@ -339,7 +450,7 @@ function tourAdvance() {
     showTourDesc(generateLSTDesc(currentYear, state, cell));
     // Last year — signal that next click ends the tour
     if (YEARS.indexOf(currentYear) === YEARS.length - 1) {
-      playBtn.textContent = "End";
+      playBtn.textContent = "End"; playBtn.classList.add("tour-end");
     }
     return;
   }
@@ -365,7 +476,7 @@ function tourAdvance() {
         setYear(YEARS[idx + 1], true);
         tourStep = 'year';
         showTourDesc(TOUR_YEAR_DESCS[YEARS[idx + 1]] ?? "");
-        playBtn.textContent = "Next ▶";
+        playBtn.textContent = "Next ▶"; playBtn.classList.remove("tour-end");
       } else {
         // Last year — end tour, collapse sidebar, return to idle
         tourStep = null;
@@ -374,7 +485,7 @@ function tourAdvance() {
         lstOpacity = 0.20;
         setYear(currentYear, false);
         updateOpacitySliders();
-        playBtn.textContent = "▶ Play";
+        playBtn.textContent = "▶ Start Tour"; playBtn.classList.remove("tour-end");
         _sidebarTransitioning = true;
         sidebar.classList.remove("zoomed");
         sidebar.addEventListener("transitionend", () => {
@@ -443,7 +554,7 @@ function startPlay() {
 function stopPlay() {
   isPlaying = false;
   if (playTimer) { clearTimeout(playTimer); playTimer = null; }
-  playBtn.textContent = "▶ Play";
+  playBtn.textContent = "▶ Start Tour"; playBtn.classList.remove("tour-end");
   playBtn.classList.remove("playing");
 }
 
@@ -480,6 +591,14 @@ function zoomToFeature(feature) {
 }
 
 function resetZoom() {
+  if (tourStep && tourStep.startsWith("mini-")) {
+    tourStep = null;
+    hideTourDesc();
+    clearPin();
+    frpOpacity = 1.00; lstOpacity = 0.20;
+    updateOpacitySliders();
+    playBtn.textContent = "▶ Start Tour"; playBtn.classList.remove("tour-end");
+  }
   zoomedState = null;
   statePaths.classed("state-dim",    false);
   statePaths.classed("state-zoomed", false);
@@ -947,22 +1066,34 @@ async function main() {
   yearSlider.addEventListener("input", function() {
     const yr = +this.value;
     if (tourStep !== null) {
-      // Cancel any in-flight zoom, reset view, rewind/fast-forward tour to this year
       playBtn.disabled = false;
-      if (zoomedState) {
-        zoomedState = null;
-        statePaths.classed("state-dim",    false);
-        statePaths.classed("state-zoomed", false);
-        svg.call(zoom.transform, d3.zoomIdentity);
-      }
       clearPin();
       frpOpacity = 1.00;
       lstOpacity = 0.20;
       updateOpacitySliders();
-      setYear(yr, false);
-      tourStep = 'year';
-      showTourDesc(TOUR_YEAR_DESCS[yr] ?? "");
-      playBtn.textContent = "Next ▶";
+      if (tourStep.startsWith("mini-")) {
+        // Mini tour: keep zoomed state, reset to FRP step for selected year
+        setYear(yr, false);
+        tourStep = 'mini-frp';
+        frpOpacity = 1.00; lstOpacity = 0.20;
+        updateOpacitySliders();
+        const cell = findBestFRPCellInState(zoomedState, yr);
+        if (cell) pinCell(cell);
+        showTourDesc(generateMiniFRPDesc(zoomedState, cell, yr));
+        playBtn.textContent = "Next ▶"; playBtn.classList.remove("tour-end");
+      } else {
+        // Global tour: cancel zoom, reset view
+        if (zoomedState) {
+          zoomedState = null;
+          statePaths.classed("state-dim",    false);
+          statePaths.classed("state-zoomed", false);
+          svg.call(zoom.transform, d3.zoomIdentity);
+        }
+        setYear(yr, false);
+        tourStep = 'year';
+        showTourDesc(TOUR_YEAR_DESCS[yr] ?? "");
+        playBtn.textContent = "Next ▶"; playBtn.classList.remove("tour-end");
+      }
     } else {
       setYear(yr, false);
     }
