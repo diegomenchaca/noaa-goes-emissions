@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Write-Up — Western US Wildfire &amp; Surface Temperature</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:      #0d1117;
+      --surface: #161b22;
+      --border:  #30363d;
+      --text:    #c9d1d9;
+      --muted:   #8b949e;
+      --accent:  #f0c040;
+      --fire:    #e05c2f;
+      --font:    'Inter', system-ui, -apple-system, sans-serif;
+    }
+    html, body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 15px;
+      line-height: 1.72;
+      min-height: 100%;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* ── Top nav bar ── */
+    .topbar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 32px;
+      height: 52px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .topbar-title {
+      font-size: 0.88rem;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .back-link {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.84rem;
+      font-weight: 500;
+      color: var(--muted);
+      white-space: nowrap;
+      transition: color 0.15s;
+      text-decoration: none;
+    }
+    .back-link:hover { color: var(--text); text-decoration: none; }
+    .back-link svg { flex-shrink: 0; }
+
+    /* ── Page layout ── */
+    .page {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 56px 32px 96px;
+    }
+
+    /* ── Header ── */
+    .page-header { margin-bottom: 52px; }
+    .page-header h1 {
+      font-size: 1.9rem;
+      font-weight: 800;
+      color: var(--text);
+      line-height: 1.2;
+      margin-bottom: 12px;
+    }
+    .page-header .subtitle {
+      font-size: 1.0rem;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    /* ── Section headings ── */
+    h2 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--text);
+      margin: 48px 0 16px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    h3 {
+      font-size: 1.0rem;
+      font-weight: 700;
+      color: var(--text);
+      margin: 28px 0 8px;
+    }
+    p { margin-bottom: 14px; color: var(--muted); }
+    p strong { color: var(--text); font-weight: 600; }
+    ul, ol { margin: 0 0 14px 22px; color: var(--muted); }
+    li { margin-bottom: 6px; }
+    li strong { color: var(--text); font-weight: 600; }
+
+    /* ── Callout box ── */
+    .callout {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      border-radius: 6px;
+      padding: 14px 18px;
+      margin: 20px 0;
+    }
+    .callout p { margin: 0; font-size: 0.9rem; }
+
+    /* ── Footer CTA ── */
+    .footer-cta {
+      margin-top: 64px;
+      padding-top: 32px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: center;
+    }
+    .footer-cta p { margin: 0; font-size: 0.88rem; color: var(--muted); }
+    .cta-btn {
+      display: inline-block;
+      padding: 9px 20px;
+      background: var(--fire);
+      color: #fff;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      text-decoration: none;
+      transition: background 0.15s;
+      white-space: nowrap;
+    }
+    .cta-btn:hover { background: #ff8c42; text-decoration: none; }
+  </style>
+</head>
+<body>
+
+<nav class="topbar">
+  <span class="topbar-title">Western US Wildfire &amp; Surface Temperature — 2018–2024</span>
+  <a href="index.html" class="back-link">
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M9 2L4 7L9 12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    Back to Visualization
+  </a>
+</nav>
+
+<main class="page">
+
+  <header class="page-header">
+    <h1>Project Write-Up</h1>
+    <p class="subtitle">
+      Design rationale and development overview for the Western US Wildfire Intensity &amp;
+      Land Surface Temperature interactive visualization.
+    </p>
+  </header>
+
+  <!-- ── SECTION 1: Design Rationale ── -->
+  <h2>Design Rationale</h2>
+
+  <h3>Research Question &amp; Data Framing</h3>
+  <p>
+    The central question is whether wildfire hotspots in the western US have expanded geographically
+    between 2018 and 2024, and whether land surface temperature warming predicts where new fire risk
+    emerges. The two quantities needed to be visually separable yet comparable
+    at the same resolution.
+  </p>
+
+  <h3>Spatial Unit: 1°×1° Grid Cells</h3>
+  <p>
+    The underlying data comes from NOAA GOES-16 geostationary satellite products (ABI-L2-FDCC for fire,
+    ABI-L2-LSTC for land surface temperature). Both products are aggregated to a 1°×1° grid (~111 km
+    per side at mid-latitudes) to reduce file size and align the two variables on a common spatial
+    basis.
+  </p>
+  <p>
+    We considered rendering cells as a raster image (canvas pixels) for performance, but chose SVG paths
+    instead because individual cell interactivity (hover tooltips, click-to-pin)
+    required event targeting on discrete elements. SVG also scales correctly at all zoom levels without
+    re-rendering.
+  </p>
+  <p>
+    A small inset (6% on each edge) was applied so cells render at 88% of their nominal size. This
+    creates visible separation between adjacent cells, making spatial clustering of fire or heat signals
+    immediately readable even without zooming.
+  </p>
+
+  <h3>Fire Intensity Encoding (FRP)</h3>
+  <p>
+    Fire Radiative Power spans roughly three to four orders of magnitude in this dataset — from near-threshold
+    low-intensity burns (~5 MW) to peak seasonal totals around 21,000 MW in the most catastrophic cells.
+    A <strong>sequential log-scale colormap</strong> (yellow → orange → deep red, from D3's YlOrRd) was chosen
+    for three reasons:
+  </p>
+  <ul>
+    <li>A linear scale would compress nearly all variation into the low end, making moderate fire years
+    visually indistinguishable from fire-free years.</li>
+    <li>The log scale preserves perceptual distance across the full intensity range, so a 10× difference
+    in FRP looks like a consistent visual step regardless of where on the scale it occurs.</li>
+    <li>Yellow-orange-red is culturally associated with fire and heat, reducing the cognitive load of
+    decoding the legend.</li>
+  </ul>
+  <p>
+    Cells below 5 MW FRP are rendered fully transparent rather than assigned a color, preventing
+    low-noise detections from adding visual clutter to years with limited fire activity.
+  </p>
+
+  <h3>Land Surface Temperature Encoding (LST Anomaly)</h3>
+  <p>
+    Rather than showing absolute temperatures, we encode the <strong>deviation from each cell's
+    own 2018–2024 summer mean</strong>. Absolute LST is dominated
+    by latitude and elevation gradients that would make the desert Southwest perpetually red and
+    the northern Rockies perpetually blue regardless of year to year variation. Anomalies reveal
+    <em>change</em>, which locations are warming faster than their own baseline, making the map
+    directly relevant to fire risk rather than simply reflecting geography.
+  </p>
+  <p>
+    A <strong>diverging blue–white–red colormap</strong> centered at zero was used. Blue encodes
+    cooler-than-average conditions (which suppress fire risk); red encodes warmer-than-average
+    (which amplify it). White at zero provides a clear neutral anchor. The color direction intentionally
+    matches cultural conventions for cool and warm, and the diverging structure draws attention to
+    the most extreme departures in either direction.
+  </p>
+
+  <h3>Layer Opacity &amp; Linked Sliders</h3>
+  <p>
+    Because FRP and LST cells share the same spatial grid, one layer can fully obscure the other.
+    The opacity control system allows users to balance visibility: default state shows FRP at full
+    opacity and LST at 20% (LST provides background context). The <strong>inverse link (🔒)</strong>
+    means boosting one layer automatically dims the other, maintaining a roughly constant total visual
+    density. Users can unlock the sliders to control layers independently for detailed comparison.
+  </p>
+  <p>
+    We considered hiding LST entirely when FRP is at full opacity, but found that the faint LST
+    background at 20% opacity provides useful spatial context, e.g., seeing that a fire-free region
+    still has anomalously warm surface temperatures.
+  </p>
+
+  <h3>Zoom &amp; State Isolation</h3>
+  <p>
+    The western US spans roughly 25° of latitude and 25° of longitude. At full extent, individual
+    1° cells are small and dense. Double-clicking a state triggers a <strong>smooth zoom-to-fit</strong>
+    that fills the map area with that state's bounding box. Surrounding states are dimmed (not hidden)
+    to preserve geographic context while focusing attention. The sidebar expands to widen the sparkline
+    chart, taking advantage of the available space.
+  </p>
+  <p>
+    We evaluated a fixed-zoom-level approach (e.g., always zoom to scale 4) but found it worked poorly
+    across states with very different areas (Nevada vs. Washington). The fit-to-bounds approach gives
+    each state the same visual footprint regardless of size.
+  </p>
+
+  <h3>Sparkline: Per-Cell Temporal Trend</h3>
+  <p>
+    Clicking a cell pins it and reveals a dual-axis sparkline showing FRP (orange bars, left axis) and
+    LST anomaly (blue line, right axis) across all seven years. This chart addresses the visualization's
+    core question at the cell level: <em>is this location getting hotter and more fire-prone over time?</em>
+    The dual-axis design was preferred over two separate charts because the fire–temperature relationship
+    is most readable when both signals are visually aligned along the same time axis.
+  </p>
+
+  <h3>Tour System</h3>
+  <p>
+    Two guided tour modes were implemented to lower the barrier to insight:
+  </p>
+  <ul>
+    <li><strong>Global main tour</strong> — steps year by year from 2018–2024, zooming to the highest-FRP
+    state and highest-LST state each year with curated contextual descriptions. Designed for first-time
+    users or anyone wanting a narrative overview of the seven-year period.</li>
+    <li><strong>State mini tour</strong> — when zoomed into a state, the same button runs a focused tour
+    that cycles through only the years with fire activity in that state, pinning the peak FRP cell and
+    peak LST anomaly cell in turn. Designed for users who want to explore a specific region in depth.</li>
+  </ul>
+  <p>
+    A separate nav tour (triggered by the <strong>?</strong> button) provides a UI orientation walkthrough
+    for new users, with animated demonstrations of the layer controls, year slider, and zoom behavior.
+  </p>
+
+  <h3>Visual Theme</h3>
+  <p>
+    A dark background was chosen because fire and heat colors (yellows, oranges, reds) have
+    far greater perceptual contrast against dark surfaces than against white. A light background
+    would require substantially different colormaps or reduced saturation to avoid visual clashing.
+  </p>
+
+  <!-- ── SECTION 2: Development Process ── -->
+  <h2>Development Process</h2>
+
+  <h3>Development Timeline &amp; Time Estimate</h3>
+  <div class="callout">
+    <p><strong>Total estimated time: ~42 person-hours across the team</strong></p>
+  </div>
+  <p>
+    A rough breakdown by phase:
+  </p>
+  <ul>
+    <li><strong>Data pipeline (~12 hrs)</strong> — downloading GOES-16 ABI-L2-FDCC and ABI-L2-LSTC
+    products from AWS S3 open data, parsing NetCDF files, aggregating pixel-level detections to
+    1°×1° cells, computing seasonal FRP totals (Jun–Oct) and summer LST anomalies (Jun–Sep relative
+    to the 2018–2024 mean), and serializing to a compact cells.json format suitable for client-side loading.</li>
+    <li><strong>Core map rendering (~7 hrs)</strong> — setting up the D3 Albers projection fitted to the
+    11 western states, building the LST and FRP cell layers, implementing the ocean mask (even-odd fill
+    rule to clip cells to land), and handling the initial zoom extent and pan constraints.</li>
+    <li><strong>Zoom &amp; interaction (~5 hrs)</strong> — implementing double-click zoom-to-state with
+    sidebar expansion, the click-to-pin sparkline, state hover highlighting, and the drag-vs-click
+    disambiguation logic.</li>
+    <li><strong>Tour system (~12 hrs)</strong> — the global main tour and state mini-tour required the
+    most iteration: designing the state machine, computing best-FRP and best-LST targets per year,
+    writing curated year × state descriptions, and handling edge cases (states with no fire in
+    some years, tour interruption via year slider).</li>
+    <li><strong>Nav tour &amp; UI polish (~6 hrs)</strong> — the guided UI walkthrough with animated
+    demonstrations of layer opacity, year scrubbing, zoom, and the mini-tour; the initial modal;
+    positioning logic for pop-up arrows; and general CSS polish across all states and breakpoints.</li>
+  </ul>
+
+  <h3>What Took the Most Time</h3>
+  <p>
+    <strong>The data pipeline</strong> was the single most time-intensive phase. GOES-16 produces one
+    file every ~10 minutes; a full fire season (Jun–Oct) across seven years is roughly 30,000 files.
+    Filtering, deduplicating, and aggregating those at the right spatial resolution required careful
+    attention to projection (the satellite uses a fixed-grid scan angle coordinate system, not lat/lon)
+    and to the quality flag fields that distinguish actual fire pixels from false positives.
+  </p>
+  <p>
+    <strong>The zoom–sidebar interaction</strong> was the most technically tricky front-end problem.
+    The sidebar expands via a CSS width transition (750ms), which changes the SVG's available width,
+    which invalidates any zoom transform calculated before the transition completed. The final solution
+    suppresses projection rebuilds during the transition and applies a corrective zoom-to-fit once
+    the <code>transitionend</code> event fires.
+  </p>
+  <p>
+    <strong>Writing curated tour descriptions</strong> took longer than expected. We wanted to give each
+    year × state combination in the tour a short, accurate, contextually meaningful narrative,
+    not just data summaries. We aimed for causal explanations (heat domes, pyroconvection, El Niño/La Niña influence
+    on fire seasons, etc.). This wasn't fully realized in this first version, but we wanted to set the foundation 
+    for potential future iterations to build on with more detailed descriptions.
+  </p>
+
+  <div class="footer-cta">
+    <a href="index.html" class="cta-btn">← Open Visualization</a>
+  </div>
+
+</main>
+</body>
+</html>

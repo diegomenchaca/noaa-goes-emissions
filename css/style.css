@@ -414,9 +414,35 @@ h1 {
 .spark-axis-r { fill: #4fa3e0;          font-size: 9.5px; }
 .spark-cell-loc { font-size: 0.84rem; color: var(--muted); margin-bottom: 4px; }
 
+/* ── Header right-side action group ─────────────────────── */
+#header-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+#writeup-btn {
+  padding: 7px 18px;
+  background: var(--accent);
+  border: none;
+  border-radius: 6px;
+  color: #0d1117;
+  cursor: pointer;
+  font-size: 0.88rem;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+  transition: background 0.15s, box-shadow 0.15s;
+  line-height: 20px;
+  box-shadow: 0 0 10px rgba(240,192,64,0.35);
+}
+#writeup-btn:hover { background: #f8d060; box-shadow: 0 0 16px rgba(240,192,64,0.55); text-decoration: none; }
+
 /* ── Nav tour button ─────────────────────────────────────── */
 #nav-tour-btn {
-  margin-left: auto;
   flex-shrink: 0;
   width: 28px;
   height: 28px;
