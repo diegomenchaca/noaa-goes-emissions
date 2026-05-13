@@ -294,27 +294,27 @@
 
   <h3>Development Timeline &amp; Time Estimate</h3>
   <div class="callout">
-    <p><strong>Total estimated time: ~42 person-hours across the team</strong></p>
+    <p><strong>Total estimated time: ~24 person-hours across the team</strong></p>
   </div>
   <p>
     A rough breakdown by phase:
   </p>
   <ul>
-    <li><strong>Data pipeline (~12 hrs)</strong> — downloading GOES-16 ABI-L2-FDCC and ABI-L2-LSTC
+    <li><strong>Data pipeline (~10 hrs)</strong> — downloading GOES-16 ABI-L2-FDCC and ABI-L2-LSTC
     products from AWS S3 open data, parsing NetCDF files, aggregating pixel-level detections to
     1°×1° cells, computing seasonal FRP totals (Jun–Oct) and summer LST anomalies (Jun–Sep relative
     to the 2018–2024 mean), and serializing to a compact cells.json format suitable for client-side loading.</li>
-    <li><strong>Core map rendering (~7 hrs)</strong> — setting up the D3 Albers projection fitted to the
+    <li><strong>Core map rendering (~5 hrs)</strong> — setting up the D3 Albers projection fitted to the
     11 western states, building the LST and FRP cell layers, implementing the ocean mask (even-odd fill
     rule to clip cells to land), and handling the initial zoom extent and pan constraints.</li>
-    <li><strong>Zoom &amp; interaction (~5 hrs)</strong> — implementing double-click zoom-to-state with
+    <li><strong>Zoom &amp; interaction (~3 hrs)</strong> — implementing double-click zoom-to-state with
     sidebar expansion, the click-to-pin sparkline, state hover highlighting, and the drag-vs-click
     disambiguation logic.</li>
-    <li><strong>Tour system (~12 hrs)</strong> — the global main tour and state mini-tour required the
+    <li><strong>Tour system (~4 hrs)</strong> — the global main tour and state mini-tour required the
     most iteration: designing the state machine, computing best-FRP and best-LST targets per year,
     writing curated year × state descriptions, and handling edge cases (states with no fire in
     some years, tour interruption via year slider).</li>
-    <li><strong>Nav tour &amp; UI polish (~6 hrs)</strong> — the guided UI walkthrough with animated
+    <li><strong>Nav tour &amp; UI polish (~2 hrs)</strong> — the guided UI walkthrough with animated
     demonstrations of layer opacity, year scrubbing, zoom, and the mini-tour; the initial modal;
     positioning logic for pop-up arrows; and general CSS polish across all states and breakpoints.</li>
   </ul>
